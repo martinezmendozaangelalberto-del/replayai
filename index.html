@@ -1,53 +1,83 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>ReplayAI</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<title>ReplayAI</title>
+
+<style>
+body{
+font-family: Arial;
+background:#0f172a;
+color:white;
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+margin:0;
+}
+
+.box{
+background:#1e293b;
+padding:20px;
+border-radius:10px;
+width:400px;
+}
+
+textarea{
+width:100%;
+padding:10px;
+margin-top:10px;
+border-radius:5px;
+border:none;
+}
+
+button{
+margin-top:10px;
+padding:10px;
+width:100%;
+background:#22c55e;
+border:none;
+color:white;
+font-size:16px;
+border-radius:5px;
+cursor:pointer;
+}
+
+#respuesta{
+margin-top:15px;
+color:#38bdf8;
+}
+</style>
+
 </head>
+<body>
 
-<body style="font-family: Arial; background:#0f172a; color:white; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;">
-
-<div style="width:400px; background:#1e293b; padding:20px; border-radius:10px;">
+<div class="box">
 
 <h2>ReplayAI 🤖</h2>
 
-<textarea 
-id="input" 
-placeholder="Escribe un mensaje..." 
-style="width:100%; height:100px; margin-bottom:10px;"></textarea>
+<textarea id="msg" placeholder="Escribe mensaje..."></textarea>
 
-<button onclick="responder()" style="width:100%; padding:10px;">
-Responder
-</button>
+<button onclick="responder()">Responder</button>
 
-<div id="output" style="margin-top:15px;"></div>
+<div id="respuesta"></div>
 
 </div>
 
-<script src="./index-BAXtD2FI.js"></script>
-
 <script>
 
-async function responder() {
+function responder(){
 
-const input = document.getElementById("input").value;
-const output = document.getElementById("output");
+let texto=document.getElementById("msg").value;
 
-if (!input) {
-output.innerHTML = "Escribe algo primero";
+if(texto===""){
+alert("Escribe algo");
 return;
 }
 
-output.innerHTML = "Pensando...";
+let respuesta="Respuesta generada para: "+texto;
 
-setTimeout(() => {
-
-output.innerHTML =
-"Respuesta sugerida:<br><br>" +
-"Interesante... cuéntame más 😏";
-
-}, 1000);
+document.getElementById("respuesta").innerText=respuesta;
 
 }
 
