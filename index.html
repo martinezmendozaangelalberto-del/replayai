@@ -5,66 +5,117 @@
 <title>ReplayAI</title>
 
 <style>
+
 body{
-font-family: Arial;
-background:#0f172a;
-color:white;
+font-family:Arial;
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
 display:flex;
 justify-content:center;
 align-items:center;
 height:100vh;
 margin:0;
+color:white;
 }
 
-.box{
-background:#1e293b;
-padding:20px;
-border-radius:10px;
-width:400px;
+.container{
+background:rgba(255,255,255,0.08);
+padding:25px;
+border-radius:15px;
+width:350px;
+box-shadow:0 0 20px rgba(0,0,0,0.4);
+}
+
+h1{
+margin-top:0;
 }
 
 textarea{
 width:100%;
-padding:10px;
-margin-top:10px;
-border-radius:5px;
+height:80px;
+border-radius:10px;
 border:none;
+padding:10px;
+font-size:16px;
+margin-bottom:10px;
 }
 
 button{
-margin-top:10px;
-padding:10px;
 width:100%;
-background:#22c55e;
+padding:12px;
+margin-top:8px;
 border:none;
+border-radius:10px;
+background:#00c6ff;
 color:white;
 font-size:16px;
-border-radius:5px;
 cursor:pointer;
 }
 
-#respuesta{
-margin-top:15px;
-color:#38bdf8;
+button:hover{
+background:#0094cc;
 }
+
+#premiumBtn{
+background:#ff9800;
+}
+
+#premiumBtn:hover{
+background:#e68900;
+}
+
+.respuesta{
+margin-top:15px;
+padding:10px;
+background:rgba(0,0,0,0.3);
+border-radius:10px;
+min-height:30px;
+}
+
+.badge{
+margin-top:10px;
+font-size:14px;
+color:#ffd700;
+}
+
 </style>
 
 </head>
 <body>
 
-<div class="box">
+<div class="container">
 
-<h2>ReplayAI 🤖</h2>
+<h1>ReplayAI 🤖</h1>
 
 <textarea id="msg" placeholder="Escribe mensaje..."></textarea>
 
 <button onclick="responder()">Responder</button>
 
-<div id="respuesta"></div>
+<button id="premiumBtn" onclick="activarPremium()">Activar Premium 🔥</button>
+
+<div class="badge" id="estado">
+Modo GRATIS
+</div>
+
+<div class="respuesta" id="respuesta">
+Respuesta aparecerá aquí
+</div>
 
 </div>
 
 <script>
+
+let esPremium=false;
+let respuestasGratis=5;
+
+function activarPremium(){
+
+esPremium=true;
+
+document.getElementById("estado").innerText="Modo PREMIUM 🔥";
+
+alert("Premium activado");
+
+}
 
 function responder(){
 
@@ -75,9 +126,68 @@ alert("Escribe algo");
 return;
 }
 
-let respuesta="Respuesta generada para: "+texto;
+if(!esPremium){
+
+if(respuestasGratis<=0){
+
+document.getElementById("respuesta").innerText=
+"Límite gratis alcanzado. Activa Premium.";
+
+return;
+
+}
+
+respuestasGratis--;
+
+}
+
+let respuesta="";
+
+if(esPremium){
+
+respuesta=generarRespuestaPremium(texto);
+
+}else{
+
+respuesta=generarRespuestaGratis(texto);
+
+}
 
 document.getElementById("respuesta").innerText=respuesta;
+
+}
+
+function generarRespuestaGratis(texto){
+
+let opciones=[
+"Interesante... cuéntame más",
+"Suena bien",
+"Entiendo",
+"Ya veo",
+"Ok..."
+];
+
+return opciones[Math.floor(Math.random()*opciones.length)];
+
+}
+
+function generarRespuestaPremium(texto){
+
+let opciones=[
+
+"Eso suena interesante, deberíamos hablar más 😉",
+
+"Me gusta cómo piensas",
+
+"Tienes una vibra increíble",
+
+"Eso llamó mi atención",
+
+"Definitivamente quiero saber más"
+
+];
+
+return opciones[Math.floor(Math.random()*opciones.length)];
 
 }
 
