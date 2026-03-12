@@ -11,11 +11,12 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY || "REEMPLAZA_CON
 
 const path = require("path");
 
-app.use(express.static(path.join(__dirname, "client")));
+app.use(express.static(__dirname));
 
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "client", "index.html"));
-});                                                                                 
+  res.sendFile(path.join(__dirname, "index.html"));
+});                                                            
+                                                                    
 const COIN_PACKAGES = [
  { id: "pkg_500", coins: 500, bonus: 0, price: 1000 },
  { id: "pkg_1200", coins: 1200, bonus: 200, price: 2000 },
