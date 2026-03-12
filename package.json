@@ -1,0 +1,16 @@
+{
+  "name": "evomon-server",
+  "version": "2.0.0",
+  "description": "EvoMon.io Multiplayer Server con Stripe",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "stripe": "^14.25.0"
+  }
+}
