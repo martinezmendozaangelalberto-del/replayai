@@ -9,9 +9,13 @@ const io = require("socket.io")(http, {
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY || "REEMPLAZA_CON_TU_SK_LIVE");
 
-app.use(express.json());
-app.use(express.static("../client"));
+const path = require("path");
 
+app.use(express.static(path.join(__dirname, "client")));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "client", "index.html"));
+});                                                                                 
 const COIN_PACKAGES = [
  { id: "pkg_500", coins: 500, bonus: 0, price: 1000 },
  { id: "pkg_1200", coins: 1200, bonus: 200, price: 2000 },
