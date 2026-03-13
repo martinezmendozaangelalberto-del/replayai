@@ -1,27 +1,26 @@
 require("dotenv").config();
-console.log("STRIPE KEY:", process.env.STRIPE_SECRET_KEY);
+
 const express = require("express");
 const app = express();
 const http = require("http").createServer(app);
 const io = require("socket.io")(http, {
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
-
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY || "REEMPLAZA_CON_TU_SK_LIVE");
-
 const path = require("path");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY || "");
 
+// ── Middleware PRIMERO ──
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});                                                            
-                                                                    
+// ── Paquetes ──
 const COIN_PACKAGES = [
- { id: "pkg_500", coins: 500, bonus: 0, price: 1000 },
- { id: "pkg_1200", coins: 1200, bonus: 200, price: 2000 },
- { id: "pkg_3000", coins: 3000, bonus: 600, price: 4000 },
- { id: "pkg_8000", coins: 8000, bonus: 2000, price: 10000 }
+  { id: "pkg_500",  coins: 500,  bonus: 0,    price: 1000  },
+  { id: "pkg_1200", coins: 1200, bonus: 200,  price: 2000  },
+  { id: "pkg_3000", coins: 3000, bonus: 600,  price: 4000  },
+  { id: "pkg_8000", coins: 8000, bonus: 2000, price: 10000 },
 ];
 
 let playerCoins = {};
@@ -29,9 +28,19 @@ let playerCoins = {};
 // ── Comprar monedas ──
 app.post("/api/buy-coins", async (req, res) => {
   try {
-    const { packageId, playerId, playerName } = req.body;
+    console.log("Body recibido:", req.body);
+    const packageId  = req.body?.packageId;
+    const playerId   = req.body?.playerId   || "unknown";
+    const playerName = req.body?.playerName || "Jugador";
+
     const pkg = COIN_PACKAGES.find(p => p.id === packageId);
-    if (!pkg) return res.status(400).json({ error: "Paquete no válido" });
+    if (!pkg) return res.status(400).json({ error: "Paquete no válido: " + packageId });
+
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return res.status(500).json({ error: "STRIPE_SECRET_KEY no configurada en Railway" });
+    }
+
+    const origin = "https://replayai-production-9d39.up.railway.app";
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [{ price_data: {
@@ -40,32 +49,40 @@ app.post("/api/buy-coins", async (req, res) => {
         unit_amount: pkg.price,
       }, quantity: 1 }],
       mode: "payment",
-      success_url: `${req.headers.origin || "http://localhost:3000"}/?payment=success&pkg=${packageId}&player=${playerId}`,
-      cancel_url: `${req.headers.origin || "http://localhost:3000"}/`,
+      success_url: `${origin}/?payment=success&pkg=${packageId}&player=${playerId}`,
+      cancel_url:  `${origin}/`,
       metadata: { packageId, playerId, coins: String(pkg.coins + pkg.bonus) }
     });
     res.json({ url: session.url });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    console.error("Error buy-coins:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Apoyar al creador ──
 app.post("/api/support", async (req, res) => {
   try {
-    const { amount, playerName } = req.body;
+    const amount     = req.body?.amount || 50;
+    const playerName = req.body?.playerName || "Jugador";
     const amountCents = Math.max(1000, parseInt(amount) * 100);
+    const origin = req.headers.origin || `https://${req.headers.host}`;
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [{ price_data: {
         currency: "mxn",
-        product_data: { name: "❤️ Apoyar al creador de EvoMon", description: `Donación de ${playerName || "un jugador"}` },
+        product_data: { name: "❤️ Apoyar al creador de EvoMon", description: `Donación de ${playerName}` },
         unit_amount: amountCents,
       }, quantity: 1 }],
       mode: "payment",
-      success_url: `${req.headers.origin || "http://localhost:3000"}/?payment=support_ok`,
-      cancel_url: `${req.headers.origin || "http://localhost:3000"}/`,
+      success_url: `${origin}/?payment=support_ok`,
+      cancel_url:  `${origin}/`,
     });
     res.json({ url: session.url });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    console.error("Error support:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Verificar pago ──
@@ -106,7 +123,7 @@ io.on("connection", (socket) => {
 
 setInterval(() => { if(!Object.keys(players).length)return; io.emit("tick",{players:Object.values(players).map(p=>({id:p.id,x:p.x,y:p.y,radius:p.radius,evoIdx:p.evoIdx,xp:p.xp,score:p.score,kills:p.kills,alive:p.alive,name:p.name,skinId:p.skinId}))}); }, TICK_RATE);
 
-
 http.listen(process.env.PORT || 3000, () => {
-  console.log("Evomon Server en puerto", process.env.PORT || 3000);
-});                                                                                                                                       
+  console.log("🎮 EvoMon Server en puerto", process.env.PORT || 3000);
+  console.log("💳 Stripe:", process.env.STRIPE_SECRET_KEY ? "✅ Configurado" : "❌ FALTA STRIPE_SECRET_KEY");
+});
