@@ -2062,10 +2062,11 @@ function closeAd() {
 
 
 // ═══════════════════════════════════════════
-// RANKING GLOBAL + RANGOS + RECOMPENSA DIARIA
+// FIREBASE — AUTH + FIRESTORE + RANKING + DAILY
 // ═══════════════════════════════════════════
+let fbUser = null;
 
-// ── Rangos por kills totales ──
+// ── Rangos ──
 function getTier(kills) {
   if (kills >= 500) return { name:'LEYENDA', cls:'tier-legend', emoji:'👑' };
   if (kills >= 200) return { name:'DIAMANTE', cls:'tier-diamond', emoji:'💎' };
@@ -2074,56 +2075,186 @@ function getTier(kills) {
   return { name:'BRONCE', cls:'tier-bronze', emoji:'🥉' };
 }
 
-// ── Guardar stats al morir ──
-async function saveRankingStats(kills, score) {
+// ── Auth state ──
+fbAuth.onAuthStateChanged(async (user) => {
+  if (user) {
+    fbUser = user;
+    await loadUserData(user.uid);
+    document.getElementById('authModal').classList.remove('show');
+    showHUD(user);
+    document.getElementById('globalRankBtn').style.display = 'block';
+    checkDaily();
+  }
+});
+
+async function loadUserData(uid) {
+  try {
+    const doc = await db.collection('players').doc(uid).get();
+    if (doc.exists) {
+      const d = doc.data();
+      if (d.coins !== undefined) { coins = d.coins; saveCoinsLocal(); updateCoinDisplays(); }
+      if (d.ownedSkins) { ownedSkins = new Set(d.ownedSkins); localStorage.setItem('evomon_owned', JSON.stringify([...ownedSkins])); }
+      if (d.selectedSkin) { selectedSkin = d.selectedSkin; localStorage.setItem('evomon_skin', selectedSkin); }
+      if (d.totalKills) updateTierHUD(getTier(d.totalKills));
+    } else {
+      await db.collection('players').doc(uid).set({
+        uid, email: fbUser.email,
+        username: fbUser.displayName || 'Jugador',
+        coins: 100, ownedSkins: ['s0','s1','s2','s3','s4','s5'],
+        selectedSkin: 's0', totalKills: 0, totalScore: 0, bestScore: 0,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      coins = 100; saveCoinsLocal(); updateCoinDisplays();
+      showToast('🎉 ¡Bienvenido! +100 monedas 💰');
+    }
+  } catch(e) { console.error('loadUserData:', e); }
+}
+
+function saveCoinsLocal() { localStorage.setItem('evomon_coins', coins); }
+
+async function saveUserData() {
+  if (!fbUser) return;
+  try {
+    await db.collection('players').doc(fbUser.uid).set({
+      coins, ownedSkins: [...ownedSkins], selectedSkin,
+      username: fbUser.displayName || 'Jugador',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch(e) {}
+}
+
+async function saveRankingStats(k, s) {
   if (!fbUser) return;
   try {
     const doc = await db.collection('players').doc(fbUser.uid).get();
     const prev = doc.exists ? doc.data() : {};
-    const totalKills = (prev.totalKills || 0) + kills;
-    const totalScore = (prev.totalScore || 0) + score;
-    const bestScore  = Math.max(prev.bestScore || 0, score);
-    const tier = getTier(totalKills);
+    const totalKills = (prev.totalKills || 0) + k;
+    const bestScore = Math.max(prev.bestScore || 0, s);
     await db.collection('players').doc(fbUser.uid).update({
-      totalKills, totalScore, bestScore,
-      tier: tier.name,
-      username: fbUser.displayName || prev.username || 'Jugador',
-      coins,
+      totalKills, bestScore, coins,
+      username: fbUser.displayName || 'Jugador',
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    // Mostrar tier actual en HUD
-    updateTierHUD(tier);
-  } catch(e) { console.error('saveRankingStats:', e); }
+    updateTierHUD(getTier(totalKills));
+  } catch(e) {}
+}
+
+function showHUD(user) {
+  const hud = document.getElementById('userHud');
+  if (hud) hud.style.display = 'flex';
+  const n = document.getElementById('hudUsername');
+  if (n) n.textContent = user.displayName || user.email.split('@')[0];
+  const c = document.getElementById('hudCoins');
+  if (c) c.textContent = coins;
+  const nameInput = document.getElementById('playerName');
+  if (nameInput && user.displayName) nameInput.value = user.displayName;
 }
 
 function updateTierHUD(tier) {
+  let el = document.getElementById('hudTier');
   const hud = document.getElementById('hudUsername');
-  if (hud) {
-    const parent = hud.parentElement;
-    let tierEl = document.getElementById('hudTier');
-    if (!tierEl) {
-      tierEl = document.createElement('span');
-      tierEl.id = 'hudTier';
-      tierEl.style.cssText = 'font-size:10px;font-weight:900;padding:1px 6px;border-radius:20px;margin-left:4px;';
-      parent.appendChild(tierEl);
-    }
-    tierEl.textContent = tier.emoji + ' ' + tier.name;
-    tierEl.className = 'rank-tier ' + tier.cls;
+  if (!hud) return;
+  if (!el) {
+    el = document.createElement('span');
+    el.id = 'hudTier';
+    el.style.cssText = 'font-size:10px;font-weight:900;padding:1px 6px;border-radius:20px;margin-left:4px;';
+    hud.parentElement.appendChild(el);
+  }
+  el.textContent = tier.emoji + ' ' + tier.name;
+  el.className = 'rank-tier ' + tier.cls;
+}
+
+// ── Login con Google ──
+async function loginWithGoogle() {
+  try {
+    document.getElementById('authError').textContent = '⏳ Abriendo Google...';
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await fbAuth.signInWithPopup(provider);
+  } catch(e) {
+    const msgs = { 'auth/popup-closed-by-user':'Cerraste el popup', 'auth/popup-blocked':'Popup bloqueado — permite popups' };
+    document.getElementById('authError').textContent = msgs[e.code] || e.message;
   }
 }
 
-// ── Abrir ranking ──
+// ── Login con correo ──
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass  = document.getElementById('loginPassword').value;
+  if (!email || !pass) return setAuthErr('Completa todos los campos');
+  try {
+    document.getElementById('authError').textContent = '⏳ Entrando...';
+    await fbAuth.signInWithEmailAndPassword(email, pass);
+  } catch(e) {
+    const msgs = { 'auth/user-not-found':'Correo no registrado', 'auth/wrong-password':'Contraseña incorrecta', 'auth/invalid-email':'Correo inválido', 'auth/too-many-requests':'Demasiados intentos' };
+    setAuthErr(msgs[e.code] || e.message);
+  }
+}
+
+// ── Registro ──
+async function doRegister() {
+  const username = document.getElementById('regUsername').value.trim();
+  const email    = document.getElementById('regEmail').value.trim();
+  const pass     = document.getElementById('regPassword').value;
+  if (!username || !email || !pass) return setAuthErr('Completa todos los campos');
+  if (pass.length < 6) return setAuthErr('Contraseña mínimo 6 caracteres');
+  try {
+    document.getElementById('authError').textContent = '⏳ Creando cuenta...';
+    const cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
+    await cred.user.updateProfile({ displayName: username });
+  } catch(e) {
+    const msgs = { 'auth/email-already-in-use':'Correo ya registrado', 'auth/invalid-email':'Correo inválido', 'auth/weak-password':'Contraseña muy débil' };
+    setAuthErr(msgs[e.code] || e.message);
+  }
+}
+
+function skipAuth() { document.getElementById('authModal').classList.remove('show'); }
+function setAuthErr(msg) { document.getElementById('authError').textContent = msg; }
+
+// ── Logout ──
+function fbLogout() {
+  fbAuth.signOut().then(() => {
+    fbUser = null;
+    document.getElementById('userHud').style.display = 'none';
+    document.getElementById('globalRankBtn').style.display = 'none';
+    document.getElementById('authModal').classList.add('show');
+    showToast('👋 Sesión cerrada');
+  });
+}
+
+// ── Tabs auth ──
+function showAuthTab(tab) {
+  document.getElementById('loginForm').style.display = tab==='login' ? 'block' : 'none';
+  document.getElementById('registerForm').style.display = tab==='register' ? 'block' : 'none';
+  document.getElementById('tabLogin').classList.toggle('active', tab==='login');
+  document.getElementById('tabRegister').classList.toggle('active', tab==='register');
+  document.getElementById('authError').textContent = '';
+}
+
+// ── Guardar monedas en Firebase ──
+const _saveCoinsOrig = saveCoins;
+saveCoins = function() {
+  _saveCoinsOrig();
+  if (fbUser) db.collection('players').doc(fbUser.uid).update({ coins }).catch(()=>{});
+};
+
+// ── Hook muerte: guardar stats ──
+const _deathOrig = showDeathScreen;
+showDeathScreen = function(...args) {
+  if (fbUser) {
+    saveUserData();
+    if (typeof kills !== 'undefined') saveRankingStats(kills, typeof score !== 'undefined' ? score : 0);
+  }
+  _deathOrig(...args);
+};
+
+// ── RANKING ──
 let currentRankTab = 'kills';
 
 async function openRanking() {
   document.getElementById('rankModal').classList.add('show');
   loadRanking(currentRankTab);
 }
-
-function closeRanking() {
-  document.getElementById('rankModal').classList.remove('show');
-}
-
+function closeRanking() { document.getElementById('rankModal').classList.remove('show'); }
 function switchRankTab(tab, el) {
   currentRankTab = tab;
   document.querySelectorAll('.rank-tab').forEach(t => t.classList.remove('active'));
@@ -2135,416 +2266,55 @@ async function loadRanking(tab) {
   const listEl = document.getElementById('rankList');
   listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">⏳ Cargando...</div>';
   try {
-    const field = tab === 'kills' ? 'totalKills' : tab === 'score' ? 'bestScore' : 'coins';
-    const snap = await db.collection('players')
-      .orderBy(field, 'desc')
-      .limit(10)
-      .get();
-
-    if (snap.empty) {
-      listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Aún no hay jugadores en el ranking 👾</div>';
-      return;
-    }
-
+    const field = tab==='kills' ? 'totalKills' : tab==='score' ? 'bestScore' : 'coins';
+    const snap = await db.collection('players').orderBy(field,'desc').limit(10).get();
+    if (snap.empty) { listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Aún no hay jugadores 👾</div>'; return; }
     const medals = ['🥇','🥈','🥉'];
     const posCls = ['gold','silver','bronze'];
     let html = '';
-    let myPos = -1;
-
     snap.docs.forEach((doc, i) => {
       const d = doc.data();
       const isMe = fbUser && doc.id === fbUser.uid;
-      if (isMe) myPos = i + 1;
       const tier = getTier(d.totalKills || 0);
-      const val = tab === 'kills' ? (d.totalKills || 0) + ' kills'
-                : tab === 'score' ? (d.bestScore || 0) + ' pts'
-                : '💰 ' + (d.coins || 0);
+      const val = tab==='kills' ? (d.totalKills||0)+' kills' : tab==='score' ? (d.bestScore||0)+' pts' : '💰 '+(d.coins||0);
       const evo = EVOLUTIONS[Math.min(3, Math.floor((d.totalKills||0)/50))];
-      html += `
-        <div class="rank-row ${isMe?'me':''}">
-          <div class="rank-pos ${posCls[i]||''}">${medals[i]||('#'+(i+1))}</div>
-          <div class="rank-avatar">${evo?.emoji||'🟢'}</div>
-          <div class="rank-info">
-            <div class="rank-name">${d.username||'Jugador'} <span class="rank-tier ${tier.cls}">${tier.emoji} ${tier.name}</span></div>
-            <div class="rank-val">${val}</div>
-          </div>
-          ${isMe?'<span style="font-size:10px;color:#00ff88;font-weight:900;">TÚ</span>':''}
-        </div>`;
+      html += `<div class="rank-row ${isMe?'me':''}">
+        <div class="rank-pos ${posCls[i]||''}">${medals[i]||('#'+(i+1))}</div>
+        <div class="rank-avatar">${evo?.emoji||'🟢'}</div>
+        <div class="rank-info">
+          <div class="rank-name">${d.username||'Jugador'} <span class="rank-tier ${tier.cls}">${tier.emoji} ${tier.name}</span></div>
+          <div class="rank-val">${val}</div>
+        </div>
+        ${isMe?'<span style="font-size:10px;color:#00ff88;font-weight:900;">TÚ</span>':''}
+      </div>`;
     });
-
     listEl.innerHTML = html;
-
-    // Si el jugador no está en top 10, buscar su posición
-    if (fbUser && myPos === -1) {
-      document.getElementById('myRankRow').innerHTML = '<div style="text-align:center;font-size:12px;color:rgba(255,255,255,0.3);padding:8px;">Sigue jugando para entrar al top 10 💪</div>';
-    } else {
-      document.getElementById('myRankRow').innerHTML = '';
-    }
+    document.getElementById('myRankRow').innerHTML = '';
   } catch(e) {
-    listEl.innerHTML = '<div style="text-align:center;color:rgba(255,100,100,0.6);padding:20px;">Error al cargar ranking</div>';
+    listEl.innerHTML = '<div style="text-align:center;color:rgba(255,100,100,0.6);padding:20px;">Activa el índice en Firestore</div>';
   }
 }
 
-// ── Recompensa diaria ──
+// ── RECOMPENSA DIARIA ──
 async function checkDaily() {
   if (!fbUser) return;
   const today = new Date().toDateString();
-  const lastClaim = localStorage.getItem('evomon_daily_' + fbUser.uid);
-  const btn = document.getElementById('dailyBtn');
-  if (lastClaim !== today) {
-    btn.style.display = 'block';
-  }
+  if (localStorage.getItem('evomon_daily_'+fbUser.uid) !== today)
+    document.getElementById('dailyBtn').style.display = 'block';
 }
 
 async function claimDaily() {
-  if (!fbUser) return showToast('Inicia sesión para reclamar tu recompensa diaria');
+  if (!fbUser) return showToast('Inicia sesión primero');
   const today = new Date().toDateString();
-  const lastClaim = localStorage.getItem('evomon_daily_' + fbUser.uid);
-  if (lastClaim === today) return showToast('⏳ Ya reclamaste tu recompensa hoy');
-  const reward = 50 + Math.floor(Math.random() * 50); // 50-100 monedas
+  if (localStorage.getItem('evomon_daily_'+fbUser.uid) === today) return showToast('⏳ Ya reclamaste hoy');
+  const reward = 50 + Math.floor(Math.random()*51);
   coins += reward;
   saveCoins();
   updateCoinDisplays();
-  localStorage.setItem('evomon_daily_' + fbUser.uid, today);
+  if (document.getElementById('hudCoins')) document.getElementById('hudCoins').textContent = coins;
+  localStorage.setItem('evomon_daily_'+fbUser.uid, today);
   document.getElementById('dailyBtn').style.display = 'none';
-  showToast('🎁 ¡Recompensa diaria! +' + reward + ' monedas 💰');
-}
-
-// ── Hook: guardar stats al morir ──
-const _origShowDeath = showDeathScreen;
-showDeathScreen = function(msg) {
-  // Guardar kills y score en Firebase ranking
-  if (typeof kills !== 'undefined' && typeof score !== 'undefined') {
-    saveRankingStats(kills, score);
-  }
-  _origShowDeath(msg);
-};
-
-// ── Mostrar botones cuando hay sesión ──
-const _origOnAuthSuccess = onAuthSuccess;
-onAuthSuccess = function(user) {
-  _origOnAuthSuccess(user);
-  document.getElementById('globalRankBtn').style.display = 'block';
-  document.getElementById('dailyBtn').style.display = 'none';
-  checkDaily();
-  // Cargar tier del usuario
-  db.collection('players').doc(user.uid || fbUser?.uid).get().then(doc => {
-    if (doc.exists && doc.data().totalKills) {
-      updateTierHUD(getTier(doc.data().totalKills));
-    }
-  }).catch(()=>{});
-};
-
-// ═══════════════════════════════════════════
-// FIREBASE AUTH + FIRESTORE
-// ═══════════════════════════════════════════
-let fbUser = null;
-
-// Auto-login con Firebase
-fbAuth.onAuthStateChanged(async (user) => {
-  if (user) {
-    fbUser = user;
-    await loadUserData(user.uid);
-    // Si el modal de auth está abierto, cerrarlo
-    document.getElementById('authModal')?.classList.remove('show');
-    updateAuthUI(user);
-  }
-});
-
-async function loadUserData(uid) {
-  try {
-    const doc = await db.collection('players').doc(uid).get();
-    if (doc.exists) {
-      const data = doc.data();
-      // Sincronizar monedas desde Firestore
-      if (data.coins !== undefined) {
-        coins = data.coins;
-        saveCoins();
-        updateCoinDisplays();
-      }
-      // Sincronizar skins
-      if (data.ownedSkins) {
-        ownedSkins = new Set(data.ownedSkins);
-        localStorage.setItem('evomon_owned', JSON.stringify([...ownedSkins]));
-      }
-      if (data.selectedSkin) {
-        selectedSkin = data.selectedSkin;
-        localStorage.setItem('evomon_skin', selectedSkin);
-      }
-      console.log('✅ Datos cargados de Firebase:', data);
-    } else {
-      // Primera vez - crear documento
-      await saveUserData();
-    }
-  } catch(e) { console.error('Firebase load error:', e); }
-}
-
-async function saveUserData() {
-  if (!fbUser) return;
-  try {
-    await db.collection('players').doc(fbUser.uid).set({
-      uid: fbUser.uid,
-      email: fbUser.email,
-      username: fbUser.displayName || document.getElementById('playerName')?.value || 'Jugador',
-      coins: coins,
-      ownedSkins: [...ownedSkins],
-      selectedSkin: selectedSkin,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-    console.log('✅ Datos guardados en Firebase');
-  } catch(e) { console.error('Firebase save error:', e); }
-}
-
-function updateAuthUI(user) {
-  // Poner el nombre del usuario en el input
-  const nameInput = document.getElementById('playerName');
-  if (nameInput && user.displayName) nameInput.value = user.displayName;
-  // Mostrar user hud
-  const hud = document.getElementById('userHud');
-  if (hud) {
-    hud.style.display = 'block';
-    const hudName = document.getElementById('hudUsername');
-    if (hudName) hudName.textContent = user.displayName || user.email.split('@')[0];
-    const hudCoins = document.getElementById('hudCoins');
-    if (hudCoins) hudCoins.textContent = coins;
-  }
-}
-
-
-// ── Google Sign-In ──
-async function loginWithGoogle() {
-  try {
-    document.getElementById('authError').textContent = '⏳ Abriendo Google...';
-    const provider = new firebase.auth.GoogleAuthProvider();
-    const result = await fbAuth.signInWithPopup(provider);
-    const user = result.user;
-    fbUser = user;
-    // Check if new user
-    const doc = await db.collection('players').doc(user.uid).get();
-    if (!doc.exists) {
-      await db.collection('players').doc(user.uid).set({
-        uid: user.uid,
-        email: user.email,
-        username: user.displayName || 'Jugador',
-        coins: 100,
-        ownedSkins: ['s0','s1','s2','s3','s4','s5'],
-        selectedSkin: 's0',
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      coins = 100;
-      saveCoins();
-      updateCoinDisplays();
-      showToast('🎉 ¡Bienvenido! +100 monedas de regalo 💰');
-    } else {
-      await loadUserData(user.uid);
-      showToast('✅ ¡Bienvenido de vuelta, ' + user.displayName + '!');
-    }
-    document.getElementById('authModal').classList.remove('show');
-    updateAuthUI(user);
-  } catch(e) {
-    const msgs = {
-      'auth/popup-closed-by-user': 'Cerraste el popup de Google',
-      'auth/popup-blocked': 'Popup bloqueado — permite popups en tu navegador'
-    };
-    document.getElementById('authError').textContent = msgs[e.code] || e.message;
-  }
-}
-
-// ── Override doLogin para usar Firebase ──
-async function doLogin() {
-  const email = document.getElementById('loginEmail').value.trim();
-  const pass  = document.getElementById('loginPassword').value;
-  if (!email || !pass) return document.getElementById('authError').textContent = 'Completa todos los campos';
-  try {
-    document.getElementById('authError').textContent = '⏳ Entrando...';
-    await fbAuth.signInWithEmailAndPassword(email, pass);
-    document.getElementById('authModal').classList.remove('show');
-    showToast('✅ ¡Bienvenido de vuelta!');
-  } catch(e) {
-    const msgs = {
-      'auth/user-not-found': 'Correo no registrado',
-      'auth/wrong-password': 'Contraseña incorrecta',
-      'auth/invalid-email': 'Correo inválido',
-      'auth/too-many-requests': 'Demasiados intentos. Espera un momento'
-    };
-    document.getElementById('authError').textContent = msgs[e.code] || e.message;
-  }
-}
-
-// ── Override doRegister para usar Firebase ──
-async function doRegister() {
-  const username = document.getElementById('regUsername').value.trim();
-  const email    = document.getElementById('regEmail').value.trim();
-  const pass     = document.getElementById('regPassword').value;
-  if (!username || !email || !pass) return document.getElementById('authError').textContent = 'Completa todos los campos';
-  if (pass.length < 6) return document.getElementById('authError').textContent = 'Contraseña mínimo 6 caracteres';
-  try {
-    document.getElementById('authError').textContent = '⏳ Creando cuenta...';
-    const cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
-    await cred.user.updateProfile({ displayName: username });
-    fbUser = cred.user;
-    // Crear documento inicial en Firestore
-    await db.collection('players').doc(cred.user.uid).set({
-      uid: cred.user.uid,
-      email: email,
-      username: username,
-      coins: 100, // 100 monedas de bienvenida
-      ownedSkins: ['s0','s1','s2','s3','s4','s5'],
-      selectedSkin: 's0',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    coins = 100;
-    saveCoins();
-    updateCoinDisplays();
-    document.getElementById('authModal').classList.remove('show');
-    showToast('🎉 ¡Cuenta creada! +100 monedas de bienvenida 💰');
-  } catch(e) {
-    const msgs = {
-      'auth/email-already-in-use': 'Este correo ya está registrado',
-      'auth/invalid-email': 'Correo inválido',
-      'auth/weak-password': 'Contraseña muy débil'
-    };
-    document.getElementById('authError').textContent = msgs[e.code] || e.message;
-  }
-}
-
-// ── Override skipAuth ──
-function skipAuth() {
-  document.getElementById('authModal').classList.remove('show');
-}
-
-// ── Guardar monedas en Firebase cuando cambian ──
-const _origSaveCoins = saveCoins;
-saveCoins = function() {
-  _origSaveCoins();
-  if (fbUser) {
-    db.collection('players').doc(fbUser.uid).update({
-      coins: coins,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).catch(() => {});
-  }
-};
-
-// ── Guardar skin al cambiar ──
-const _origSelectSkin = typeof selectSkin === 'function' ? selectSkin : null;
-if (_origSelectSkin) {
-  selectSkin = function(id) {
-    _origSelectSkin(id);
-    if (fbUser) {
-      db.collection('players').doc(fbUser.uid).update({
-        selectedSkin: id,
-        ownedSkins: [...ownedSkins]
-      }).catch(() => {});
-    }
-  };
-}
-
-// ── Logout ──
-function fbLogout() {
-  fbAuth.signOut().then(() => {
-    fbUser = null;
-    showToast('👋 Sesión cerrada');
-    const hud = document.getElementById('userHud');
-    if (hud) hud.style.display = 'none';
-  });
-}
-
-// ── Guardar progreso al morir ──
-const _origShowDeathOld = typeof showDeathScreen === 'function' ? showDeathScreen : null;
-if (_origShowDeathOld) {
-  const wrapped = showDeathScreen;
-  showDeathScreen = function(...args) {
-    if (fbUser) saveUserData();
-    wrapped(...args);
-  };
-}
-
-// ── Patch: mostrar ad al morir antes de ir a death screen ──
-const _origShowDeath = typeof showDeathScreen === 'function' ? showDeathScreen : null;
-if (_origShowDeath) {
-  showDeathScreen = function(...args) {
-    showDeathAd(() => _origShowDeath(...args));
-  };
-}
-
-// ── Verificar pago al cargar ──
-window.addEventListener('load', () => {
-  checkPaymentReturn();
-  // Cargar script de AdSense
-  if (!noAds) {
-    const s = document.createElement('script');
-    s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9220554415333102';
-    s.async = true; s.crossOrigin = 'anonymous';
-    document.head.appendChild(s);
-  }
-});
-
-// Escuchar monedas del servidor (pagos confirmados por webhook)
-if (typeof socket !== 'undefined' && socket) {
-  socket.on('coinsAdded', (data) => {
-    coins += data.coins;
-    saveCoins();
-    updateCoinDisplays();
-    showPayToast(data.message || `+${data.coins} monedas!`);
-  });
-}
-
-
-// ═══════════════════════════════════════════
-// SISTEMA DE CUENTAS
-// ═══════════════════════════════════════════
-let authToken = localStorage.getItem('evomon_token') || null;
-let currentUser = JSON.parse(localStorage.getItem('evomon_user') || 'null');
-
-// Auto-login manejado por Firebase onAuthStateChanged ↑
-
-// Auth manejado por Firebase ↑
-
-// onAuthSuccess manejado por Firebase ↑
-
-// Guardar progreso al morir
-async function saveProgressToServer(kills, score, coinsEarned) {
-  if (!authToken) return;
-  try {
-    await fetch('/api/save-progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
-      body: JSON.stringify({ kills, score, coinsEarned })
-    });
-    // Actualizar monedas locales
-    coins += coinsEarned;
-    saveCoins();
-    updateCoinDisplays();
-    document.getElementById('hudCoins').textContent = coins;
-  } catch(e) {}
-}
-
-// Comprar skin con cuenta
-const _origBuySkin = typeof buySkin === 'function' ? buySkin : null;
-if (_origBuySkin) {
-  buySkin = async function(skinId, price) {
-    if (authToken) {
-      try {
-        const res = await fetch('/api/buy-skin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
-          body: JSON.stringify({ skinId, price })
-        });
-        const data = await res.json();
-        if (!res.ok) { showToast('❌ ' + data.error); return; }
-        coins = data.coins;
-        ownedSkins = new Set(data.ownedSkins);
-        saveCoins();
-        localStorage.setItem('evomon_owned', JSON.stringify([...ownedSkins]));
-        updateCoinDisplays();
-        document.getElementById('hudCoins').textContent = coins;
-        showToast('🎨 ¡Skin comprada!');
-        buildShopGrid();
-      } catch(e) { _origBuySkin(skinId, price); }
-    } else {
-      _origBuySkin(skinId, price);
-    }
-  };
+  showToast('🎁 +'+reward+' monedas diarias 💰');
 }
 
 // Init
