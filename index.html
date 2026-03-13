@@ -216,6 +216,27 @@ canvas{display:block;}
 /* ── PAYMENT SUCCESS TOAST ── */
 #payToast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:400;background:linear-gradient(135deg,#00cc66,#00ff88);color:#000;font-family:'Bangers',cursive;font-size:20px;letter-spacing:2px;padding:14px 28px;border-radius:14px;display:none;box-shadow:0 8px 32px rgba(0,255,136,0.4);}
 
+
+/* ── AUTH MODAL ── */
+#authModal{position:fixed;inset:0;z-index:600;background:rgba(0,0,0,0.92);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;}
+#authModal.show{display:flex;}
+.auth-box{background:linear-gradient(135deg,#0d1117,#1a1f2e);border:1px solid rgba(0,255,136,0.2);border-radius:24px;padding:32px 28px;width:320px;max-width:95vw;}
+.auth-logo{font-family:'Bangers',cursive;font-size:36px;color:#00ff88;letter-spacing:3px;text-align:center;margin-bottom:4px;}
+.auth-sub{text-align:center;font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:20px;}
+.auth-tabs{display:flex;gap:0;margin-bottom:20px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);}
+.auth-tab{flex:1;padding:9px;text-align:center;font-weight:900;font-size:13px;cursor:pointer;color:rgba(255,255,255,0.4);background:transparent;border:none;transition:all .2s;}
+.auth-tab.active{background:rgba(0,255,136,0.15);color:#00ff88;}
+.auth-field{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:11px 14px;color:#fff;font-size:14px;font-family:'Nunito',sans-serif;margin-bottom:10px;outline:none;box-sizing:border-box;}
+.auth-field:focus{border-color:rgba(0,255,136,0.4);}
+.auth-btn{width:100%;padding:13px;border-radius:12px;font-family:'Bangers',cursive;font-size:20px;letter-spacing:2px;background:linear-gradient(135deg,#00cc66,#00ff88);color:#000;border:none;cursor:pointer;margin-top:6px;}
+.auth-btn:hover{transform:scale(1.02);}
+.auth-error{color:#ff4444;font-size:12px;text-align:center;margin-top:8px;min-height:18px;}
+.auth-skip{display:block;text-align:center;margin-top:12px;font-size:11px;color:rgba(255,255,255,0.3);cursor:pointer;text-decoration:underline;}
+/* ── USER HUD ── */
+#userHud{position:fixed;top:12px;left:14px;z-index:20;background:rgba(0,0,0,0.7);border:1px solid rgba(0,255,136,0.2);border-radius:10px;padding:6px 12px;font-size:11px;color:#fff;display:none;cursor:pointer;}
+#userHud .uh-name{font-weight:900;color:#00ff88;}
+#userHud .uh-coins{color:#ffd700;}
+
 /* ── MULTIPLAYER ── */
 #pingDisplay{position:fixed;top:12px;right:14px;z-index:20;background:rgba(0,0,0,0.7);border:1px solid rgba(0,255,136,0.3);border-radius:8px;padding:4px 10px;font-size:11px;font-weight:900;color:#00ff88;display:none;}
 #onlineCount{position:fixed;top:38px;right:14px;z-index:20;background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:4px 10px;font-size:10px;color:rgba(255,255,255,0.4);display:none;}
@@ -229,6 +250,25 @@ canvas{display:block;}
 #killFeed{position:fixed;top:80px;right:14px;z-index:15;pointer-events:none;width:180px;display:none;}
 .kill-entry{background:rgba(0,0,0,0.7);border-radius:6px;padding:4px 8px;margin-bottom:3px;font-size:10px;color:#fff;border-right:2px solid #ff4444;text-align:right;animation:fadeChat 3s forwards;}
 </style>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAqtD7isge5rS_X9-y6DatZY2GBeYbQRE4",
+  authDomain: "novamatch-4b73f.firebaseapp.com",
+  projectId: "novamatch-4b73f",
+  storageBucket: "novamatch-4b73f.firebasestorage.app",
+  messagingSenderId: "906996049728",
+  appId: "1:906996049728:web:8dedfc841731764ec7fca5",
+  measurementId: "G-J1QCB4CJWT"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const fbAuth = firebase.auth();
+</script>
 </head>
 <body>
 
@@ -1979,6 +2019,231 @@ function closeAd() {
   document.getElementById('adOverlay').classList.remove('show');
 }
 
+
+// ═══════════════════════════════════════════
+// FIREBASE AUTH + FIRESTORE
+// ═══════════════════════════════════════════
+let fbUser = null;
+
+// Auto-login con Firebase
+fbAuth.onAuthStateChanged(async (user) => {
+  if (user) {
+    fbUser = user;
+    await loadUserData(user.uid);
+    // Si el modal de auth está abierto, cerrarlo
+    document.getElementById('authModal')?.classList.remove('show');
+    updateAuthUI(user);
+  }
+});
+
+async function loadUserData(uid) {
+  try {
+    const doc = await db.collection('players').doc(uid).get();
+    if (doc.exists) {
+      const data = doc.data();
+      // Sincronizar monedas desde Firestore
+      if (data.coins !== undefined) {
+        coins = data.coins;
+        saveCoins();
+        updateCoinDisplays();
+      }
+      // Sincronizar skins
+      if (data.ownedSkins) {
+        ownedSkins = new Set(data.ownedSkins);
+        localStorage.setItem('evomon_owned', JSON.stringify([...ownedSkins]));
+      }
+      if (data.selectedSkin) {
+        selectedSkin = data.selectedSkin;
+        localStorage.setItem('evomon_skin', selectedSkin);
+      }
+      console.log('✅ Datos cargados de Firebase:', data);
+    } else {
+      // Primera vez - crear documento
+      await saveUserData();
+    }
+  } catch(e) { console.error('Firebase load error:', e); }
+}
+
+async function saveUserData() {
+  if (!fbUser) return;
+  try {
+    await db.collection('players').doc(fbUser.uid).set({
+      uid: fbUser.uid,
+      email: fbUser.email,
+      username: fbUser.displayName || document.getElementById('playerName')?.value || 'Jugador',
+      coins: coins,
+      ownedSkins: [...ownedSkins],
+      selectedSkin: selectedSkin,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    console.log('✅ Datos guardados en Firebase');
+  } catch(e) { console.error('Firebase save error:', e); }
+}
+
+function updateAuthUI(user) {
+  // Poner el nombre del usuario en el input
+  const nameInput = document.getElementById('playerName');
+  if (nameInput && user.displayName) nameInput.value = user.displayName;
+  // Mostrar user hud
+  const hud = document.getElementById('userHud');
+  if (hud) {
+    hud.style.display = 'block';
+    const hudName = document.getElementById('hudUsername');
+    if (hudName) hudName.textContent = user.displayName || user.email.split('@')[0];
+    const hudCoins = document.getElementById('hudCoins');
+    if (hudCoins) hudCoins.textContent = coins;
+  }
+}
+
+
+// ── Google Sign-In ──
+async function loginWithGoogle() {
+  try {
+    document.getElementById('authError').textContent = '⏳ Abriendo Google...';
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const result = await fbAuth.signInWithPopup(provider);
+    const user = result.user;
+    fbUser = user;
+    // Check if new user
+    const doc = await db.collection('players').doc(user.uid).get();
+    if (!doc.exists) {
+      await db.collection('players').doc(user.uid).set({
+        uid: user.uid,
+        email: user.email,
+        username: user.displayName || 'Jugador',
+        coins: 100,
+        ownedSkins: ['s0','s1','s2','s3','s4','s5'],
+        selectedSkin: 's0',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      coins = 100;
+      saveCoins();
+      updateCoinDisplays();
+      showToast('🎉 ¡Bienvenido! +100 monedas de regalo 💰');
+    } else {
+      await loadUserData(user.uid);
+      showToast('✅ ¡Bienvenido de vuelta, ' + user.displayName + '!');
+    }
+    document.getElementById('authModal').classList.remove('show');
+    updateAuthUI(user);
+  } catch(e) {
+    const msgs = {
+      'auth/popup-closed-by-user': 'Cerraste el popup de Google',
+      'auth/popup-blocked': 'Popup bloqueado — permite popups en tu navegador'
+    };
+    document.getElementById('authError').textContent = msgs[e.code] || e.message;
+  }
+}
+
+// ── Override doLogin para usar Firebase ──
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass  = document.getElementById('loginPassword').value;
+  if (!email || !pass) return document.getElementById('authError').textContent = 'Completa todos los campos';
+  try {
+    document.getElementById('authError').textContent = '⏳ Entrando...';
+    await fbAuth.signInWithEmailAndPassword(email, pass);
+    document.getElementById('authModal').classList.remove('show');
+    showToast('✅ ¡Bienvenido de vuelta!');
+  } catch(e) {
+    const msgs = {
+      'auth/user-not-found': 'Correo no registrado',
+      'auth/wrong-password': 'Contraseña incorrecta',
+      'auth/invalid-email': 'Correo inválido',
+      'auth/too-many-requests': 'Demasiados intentos. Espera un momento'
+    };
+    document.getElementById('authError').textContent = msgs[e.code] || e.message;
+  }
+}
+
+// ── Override doRegister para usar Firebase ──
+async function doRegister() {
+  const username = document.getElementById('regUsername').value.trim();
+  const email    = document.getElementById('regEmail').value.trim();
+  const pass     = document.getElementById('regPassword').value;
+  if (!username || !email || !pass) return document.getElementById('authError').textContent = 'Completa todos los campos';
+  if (pass.length < 6) return document.getElementById('authError').textContent = 'Contraseña mínimo 6 caracteres';
+  try {
+    document.getElementById('authError').textContent = '⏳ Creando cuenta...';
+    const cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
+    await cred.user.updateProfile({ displayName: username });
+    fbUser = cred.user;
+    // Crear documento inicial en Firestore
+    await db.collection('players').doc(cred.user.uid).set({
+      uid: cred.user.uid,
+      email: email,
+      username: username,
+      coins: 100, // 100 monedas de bienvenida
+      ownedSkins: ['s0','s1','s2','s3','s4','s5'],
+      selectedSkin: 's0',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    coins = 100;
+    saveCoins();
+    updateCoinDisplays();
+    document.getElementById('authModal').classList.remove('show');
+    showToast('🎉 ¡Cuenta creada! +100 monedas de bienvenida 💰');
+  } catch(e) {
+    const msgs = {
+      'auth/email-already-in-use': 'Este correo ya está registrado',
+      'auth/invalid-email': 'Correo inválido',
+      'auth/weak-password': 'Contraseña muy débil'
+    };
+    document.getElementById('authError').textContent = msgs[e.code] || e.message;
+  }
+}
+
+// ── Override skipAuth ──
+function skipAuth() {
+  document.getElementById('authModal').classList.remove('show');
+}
+
+// ── Guardar monedas en Firebase cuando cambian ──
+const _origSaveCoins = saveCoins;
+saveCoins = function() {
+  _origSaveCoins();
+  if (fbUser) {
+    db.collection('players').doc(fbUser.uid).update({
+      coins: coins,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(() => {});
+  }
+};
+
+// ── Guardar skin al cambiar ──
+const _origSelectSkin = typeof selectSkin === 'function' ? selectSkin : null;
+if (_origSelectSkin) {
+  selectSkin = function(id) {
+    _origSelectSkin(id);
+    if (fbUser) {
+      db.collection('players').doc(fbUser.uid).update({
+        selectedSkin: id,
+        ownedSkins: [...ownedSkins]
+      }).catch(() => {});
+    }
+  };
+}
+
+// ── Logout ──
+function fbLogout() {
+  fbAuth.signOut().then(() => {
+    fbUser = null;
+    showToast('👋 Sesión cerrada');
+    const hud = document.getElementById('userHud');
+    if (hud) hud.style.display = 'none';
+  });
+}
+
+// ── Guardar progreso al morir ──
+const _origShowDeathOld = typeof showDeathScreen === 'function' ? showDeathScreen : null;
+if (_origShowDeathOld) {
+  const wrapped = showDeathScreen;
+  showDeathScreen = function(...args) {
+    if (fbUser) saveUserData();
+    wrapped(...args);
+  };
+}
+
 // ── Patch: mostrar ad al morir antes de ir a death screen ──
 const _origShowDeath = typeof showDeathScreen === 'function' ? showDeathScreen : null;
 if (_origShowDeath) {
@@ -2009,12 +2274,205 @@ if (typeof socket !== 'undefined' && socket) {
   });
 }
 
+
+// ═══════════════════════════════════════════
+// SISTEMA DE CUENTAS
+// ═══════════════════════════════════════════
+let authToken = localStorage.getItem('evomon_token') || null;
+let currentUser = JSON.parse(localStorage.getItem('evomon_user') || 'null');
+
+// Auto-login si hay token guardado
+window.addEventListener('load', async () => {
+  if (authToken) {
+    try {
+      const res = await fetch('/api/profile', { headers: { Authorization: 'Bearer ' + authToken } });
+      if (res.ok) {
+        currentUser = await res.json();
+        localStorage.setItem('evomon_user', JSON.stringify(currentUser));
+        onAuthSuccess(currentUser);
+      } else {
+        // Token expirado
+        localStorage.removeItem('evomon_token');
+        localStorage.removeItem('evomon_user');
+        authToken = null;
+      }
+    } catch(e) { skipAuth(); }
+  }
+});
+
+function showAuthTab(tab) {
+  document.getElementById('loginForm').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('registerForm').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+  document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
+  document.getElementById('authError').textContent = '';
+}
+
+async function doLogin() {
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!email || !password) return showAuthError('Completa todos los campos');
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) return showAuthError(data.error);
+    authToken = data.token;
+    currentUser = data.user;
+    localStorage.setItem('evomon_token', authToken);
+    localStorage.setItem('evomon_user', JSON.stringify(currentUser));
+    onAuthSuccess(currentUser);
+  } catch(e) { showAuthError('Error de conexión'); }
+}
+
+async function doRegister() {
+  const username = document.getElementById('regUsername').value.trim();
+  const email    = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  if (!username || !email || !password) return showAuthError('Completa todos los campos');
+  try {
+    const res = await fetch('/api/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) return showAuthError(data.error);
+    authToken = data.token;
+    currentUser = data.user;
+    localStorage.setItem('evomon_token', authToken);
+    localStorage.setItem('evomon_user', JSON.stringify(currentUser));
+    onAuthSuccess(currentUser);
+  } catch(e) { showAuthError('Error de conexión'); }
+}
+
+function skipAuth() {
+  document.getElementById('authModal').classList.remove('show');
+}
+
+function showAuthError(msg) {
+  document.getElementById('authError').textContent = msg;
+}
+
+function onAuthSuccess(user) {
+  document.getElementById('authModal').classList.remove('show');
+  // Rellenar nombre en el menú
+  const nameInput = document.getElementById('playerName');
+  if (nameInput) nameInput.value = user.username;
+  // Sincronizar monedas
+  coins = user.coins || 0;
+  saveCoins();
+  updateCoinDisplays();
+  // Sincronizar skins
+  if (user.ownedSkins) {
+    ownedSkins = new Set(user.ownedSkins);
+    localStorage.setItem('evomon_owned', JSON.stringify([...ownedSkins]));
+  }
+  if (user.equippedSkin) {
+    selectedSkin = user.equippedSkin;
+    localStorage.setItem('evomon_skin', selectedSkin);
+  }
+  // Mostrar user hud
+  document.getElementById('userHud').style.display = 'block';
+  document.getElementById('hudUsername').textContent = user.username;
+  document.getElementById('hudCoins').textContent = coins;
+  console.log('✅ Sesión iniciada:', user.username);
+}
+
+// Guardar progreso al morir
+async function saveProgressToServer(kills, score, coinsEarned) {
+  if (!authToken) return;
+  try {
+    await fetch('/api/save-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+      body: JSON.stringify({ kills, score, coinsEarned })
+    });
+    // Actualizar monedas locales
+    coins += coinsEarned;
+    saveCoins();
+    updateCoinDisplays();
+    document.getElementById('hudCoins').textContent = coins;
+  } catch(e) {}
+}
+
+// Comprar skin con cuenta
+const _origBuySkin = typeof buySkin === 'function' ? buySkin : null;
+if (_origBuySkin) {
+  buySkin = async function(skinId, price) {
+    if (authToken) {
+      try {
+        const res = await fetch('/api/buy-skin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+          body: JSON.stringify({ skinId, price })
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast('❌ ' + data.error); return; }
+        coins = data.coins;
+        ownedSkins = new Set(data.ownedSkins);
+        saveCoins();
+        localStorage.setItem('evomon_owned', JSON.stringify([...ownedSkins]));
+        updateCoinDisplays();
+        document.getElementById('hudCoins').textContent = coins;
+        showToast('🎨 ¡Skin comprada!');
+        buildShopGrid();
+      } catch(e) { _origBuySkin(skinId, price); }
+    } else {
+      _origBuySkin(skinId, price);
+    }
+  };
+}
+
 // Init
 updateCoinDisplays();
 buildSkinGrid();
 checkPaymentReturn();
 
 </script>
+
+
+<!-- AUTH MODAL -->
+<div id="authModal" class="show">
+  <div class="auth-box">
+    <div class="auth-logo">EVOMON</div>
+    <div class="auth-sub">⚡ Crea tu cuenta para guardar todo ⚡</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tabLogin" onclick="showAuthTab('login')">🔑 ENTRAR</button>
+      <button class="auth-tab" id="tabRegister" onclick="showAuthTab('register')">✨ REGISTRO</button>
+    </div>
+    <!-- Login -->
+    <div id="loginForm">
+      <input class="auth-field" id="loginEmail" type="email" placeholder="📧 Correo electrónico">
+      <input class="auth-field" id="loginPassword" type="password" placeholder="🔒 Contraseña">
+      <button class="auth-btn" onclick="doLogin()">¡ ENTRAR !</button>
+    </div>
+    <!-- Registro -->
+    <div id="registerForm" style="display:none">
+      <input class="auth-field" id="regUsername" type="text" placeholder="👾 Nombre de jugador" maxlength="16">
+      <input class="auth-field" id="regEmail" type="email" placeholder="📧 Correo electrónico">
+      <input class="auth-field" id="regPassword" type="password" placeholder="🔒 Contraseña (mín. 6)">
+      <button class="auth-btn" onclick="doRegister()">¡ CREAR CUENTA !</button>
+    </div>
+    <div class="auth-error" id="authError"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin:14px 0 10px;">
+  <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+  <span style="font-size:11px;color:rgba(255,255,255,0.3);">o</span>
+  <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+</div>
+<button onclick="loginWithGoogle()" style="width:100%;padding:13px;border-radius:12px;background:#fff;color:#000;font-family:'Nunito',sans-serif;font-size:15px;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;">
+  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" height="20">
+  Entrar con Google
+</button>
+<span class="auth-skip" onclick="skipAuth()">Jugar sin cuenta →</span>
+  </div>
+</div>
+<!-- USER HUD -->
+<div id="userHud" onclick="openShop()">
+  <span class="uh-name" id="hudUsername">Jugador</span> · 
+  <span class="uh-coins">💰 <span id="hudCoins">0</span></span>
+</div>
 
 <!-- AD OVERLAY (muerte) -->
 <div id="adOverlay">
