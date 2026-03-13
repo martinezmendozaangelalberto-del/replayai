@@ -2496,104 +2496,11 @@ if (typeof socket !== 'undefined' && socket) {
 let authToken = localStorage.getItem('evomon_token') || null;
 let currentUser = JSON.parse(localStorage.getItem('evomon_user') || 'null');
 
-// Auto-login si hay token guardado
-window.addEventListener('load', async () => {
-  if (authToken) {
-    try {
-      const res = await fetch('/api/profile', { headers: { Authorization: 'Bearer ' + authToken } });
-      if (res.ok) {
-        currentUser = await res.json();
-        localStorage.setItem('evomon_user', JSON.stringify(currentUser));
-        onAuthSuccess(currentUser);
-      } else {
-        // Token expirado
-        localStorage.removeItem('evomon_token');
-        localStorage.removeItem('evomon_user');
-        authToken = null;
-      }
-    } catch(e) { skipAuth(); }
-  }
-});
+// Auto-login manejado por Firebase onAuthStateChanged ↑
 
-function showAuthTab(tab) {
-  document.getElementById('loginForm').style.display = tab === 'login' ? 'block' : 'none';
-  document.getElementById('registerForm').style.display = tab === 'register' ? 'block' : 'none';
-  document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
-  document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
-  document.getElementById('authError').textContent = '';
-}
+// Auth manejado por Firebase ↑
 
-async function doLogin() {
-  const email    = document.getElementById('loginEmail').value.trim();
-  const password = document.getElementById('loginPassword').value;
-  if (!email || !password) return showAuthError('Completa todos los campos');
-  try {
-    const res = await fetch('/api/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (!res.ok) return showAuthError(data.error);
-    authToken = data.token;
-    currentUser = data.user;
-    localStorage.setItem('evomon_token', authToken);
-    localStorage.setItem('evomon_user', JSON.stringify(currentUser));
-    onAuthSuccess(currentUser);
-  } catch(e) { showAuthError('Error de conexión'); }
-}
-
-async function doRegister() {
-  const username = document.getElementById('regUsername').value.trim();
-  const email    = document.getElementById('regEmail').value.trim();
-  const password = document.getElementById('regPassword').value;
-  if (!username || !email || !password) return showAuthError('Completa todos los campos');
-  try {
-    const res = await fetch('/api/register', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password })
-    });
-    const data = await res.json();
-    if (!res.ok) return showAuthError(data.error);
-    authToken = data.token;
-    currentUser = data.user;
-    localStorage.setItem('evomon_token', authToken);
-    localStorage.setItem('evomon_user', JSON.stringify(currentUser));
-    onAuthSuccess(currentUser);
-  } catch(e) { showAuthError('Error de conexión'); }
-}
-
-function skipAuth() {
-  document.getElementById('authModal').classList.remove('show');
-}
-
-function showAuthError(msg) {
-  document.getElementById('authError').textContent = msg;
-}
-
-function onAuthSuccess(user) {
-  document.getElementById('authModal').classList.remove('show');
-  // Rellenar nombre en el menú
-  const nameInput = document.getElementById('playerName');
-  if (nameInput) nameInput.value = user.username;
-  // Sincronizar monedas
-  coins = user.coins || 0;
-  saveCoins();
-  updateCoinDisplays();
-  // Sincronizar skins
-  if (user.ownedSkins) {
-    ownedSkins = new Set(user.ownedSkins);
-    localStorage.setItem('evomon_owned', JSON.stringify([...ownedSkins]));
-  }
-  if (user.equippedSkin) {
-    selectedSkin = user.equippedSkin;
-    localStorage.setItem('evomon_skin', selectedSkin);
-  }
-  // Mostrar user hud
-  document.getElementById('userHud').style.display = 'block';
-  document.getElementById('hudUsername').textContent = user.username;
-  document.getElementById('hudCoins').textContent = coins;
-  console.log('✅ Sesión iniciada:', user.username);
-}
+// onAuthSuccess manejado por Firebase ↑
 
 // Guardar progreso al morir
 async function saveProgressToServer(kills, score, coinsEarned) {
