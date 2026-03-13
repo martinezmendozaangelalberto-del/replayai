@@ -257,13 +257,13 @@ canvas{display:block;}
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script>
 const firebaseConfig = {
-  apiKey: "AIzaSyAqtD7isge5rS_X9-y6DatZY2GBeYbQRE4",
-  authDomain: "novamatch-4b73f.firebaseapp.com",
-  projectId: "novamatch-4b73f",
-  storageBucket: "novamatch-4b73f.firebasestorage.app",
-  messagingSenderId: "906996049728",
-  appId: "1:906996049728:web:8dedfc841731764ec7fca5",
-  measurementId: "G-J1QCB4CJWT"
+  apiKey: "AIzaSyC1gIqTrr4QR5oAdAEewTC1WR79aGRAi-M",
+  authDomain: "evomonio.firebaseapp.com",
+  projectId: "evomonio",
+  storageBucket: "evomonio.firebasestorage.app",
+  messagingSenderId: "858464755455",
+  appId: "1:858464755455:web:2340e5d6a1c9a53f2476ca",
+  measurementId: "G-S67DXLWN1Z"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
@@ -2469,9 +2469,14 @@ checkPaymentReturn();
   </div>
 </div>
 <!-- USER HUD -->
-<div id="userHud" onclick="openShop()">
-  <span class="uh-name" id="hudUsername">Jugador</span> · 
-  <span class="uh-coins">💰 <span id="hudCoins">0</span></span>
+<div id="userHud" style="display:flex;align-items:center;gap:8px;">
+  <span onclick="openShop()" style="cursor:pointer;">
+    <span class="uh-name" id="hudUsername">Jugador</span> · 
+    <span class="uh-coins">💰 <span id="hudCoins">0</span></span>
+  </span>
+  <button onclick="fbLogout()" style="background:rgba(255,50,50,0.2);border:1px solid rgba(255,50,50,0.3);color:#ff6666;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;">
+    Salir
+  </button>
 </div>
 
 <!-- AD OVERLAY (muerte) -->
