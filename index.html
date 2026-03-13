@@ -237,6 +237,40 @@ canvas{display:block;}
 #userHud .uh-name{font-weight:900;color:#00ff88;}
 #userHud .uh-coins{color:#ffd700;}
 
+
+/* ── RANKING GLOBAL ── */
+#globalRankBtn{position:fixed;top:12px;right:14px;z-index:20;background:rgba(0,0,0,0.7);border:1px solid rgba(255,215,0,0.3);border-radius:10px;padding:5px 12px;font-size:11px;font-weight:900;color:#ffd700;cursor:pointer;display:none;}
+#rankModal{position:fixed;inset:0;z-index:700;background:rgba(0,0,0,0.92);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;}
+#rankModal.show{display:flex;}
+.rank-box{background:#0d1117;border:1px solid rgba(255,215,0,0.2);border-radius:24px;padding:24px;width:min(380px,95vw);max-height:80vh;overflow-y:auto;}
+.rank-title{font-family:'Bangers',cursive;font-size:28px;color:#ffd700;letter-spacing:2px;text-align:center;margin-bottom:4px;}
+.rank-sub{text-align:center;font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:16px;}
+.rank-tabs{display:flex;gap:4px;background:rgba(255,255,255,0.05);border-radius:10px;padding:3px;margin-bottom:16px;}
+.rank-tab{flex:1;padding:7px;text-align:center;border-radius:8px;font-size:12px;font-weight:900;cursor:pointer;color:rgba(255,255,255,0.4);border:none;background:transparent;}
+.rank-tab.active{background:rgba(255,215,0,0.15);color:#ffd700;}
+.rank-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;margin-bottom:6px;background:rgba(255,255,255,0.03);}
+.rank-row.me{background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.2);}
+.rank-pos{width:28px;text-align:center;font-family:'Bangers',cursive;font-size:16px;color:rgba(255,255,255,0.4);}
+.rank-pos.gold{color:#ffd700;}
+.rank-pos.silver{color:#c0c0c0;}
+.rank-pos.bronze{color:#cd7f32;}
+.rank-avatar{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;background:rgba(255,255,255,0.05);}
+.rank-info{flex:1;}
+.rank-name{font-size:13px;font-weight:900;}
+.rank-val{font-size:11px;color:rgba(255,255,255,0.4);}
+.rank-badge{font-size:10px;font-weight:900;padding:2px 8px;border-radius:20px;}
+.rank-close{width:100%;padding:11px;border-radius:10px;background:rgba(255,255,255,0.07);border:none;color:rgba(255,255,255,0.6);font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;}
+/* Rangos */
+.rank-tier{display:inline-block;font-size:10px;font-weight:900;padding:1px 6px;border-radius:20px;margin-left:4px;}
+.tier-bronze{background:rgba(205,127,50,0.2);color:#cd7f32;}
+.tier-silver{background:rgba(192,192,192,0.2);color:#c0c0c0;}
+.tier-gold{background:rgba(255,215,0,0.2);color:#ffd700;}
+.tier-diamond{background:rgba(0,200,255,0.2);color:#00c8ff;}
+.tier-legend{background:rgba(255,50,255,0.2);color:#ff32ff;}
+/* Recompensa diaria */
+#dailyBtn{position:fixed;bottom:70px;right:14px;z-index:20;background:linear-gradient(135deg,#ff8800,#ffd700);border:none;border-radius:12px;padding:8px 14px;font-size:11px;font-weight:900;color:#000;cursor:pointer;display:none;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
+
 /* ── MULTIPLAYER ── */
 #pingDisplay{position:fixed;top:12px;right:14px;z-index:20;background:rgba(0,0,0,0.7);border:1px solid rgba(0,255,136,0.3);border-radius:8px;padding:4px 10px;font-size:11px;font-weight:900;color:#00ff88;display:none;}
 #onlineCount{position:fixed;top:38px;right:14px;z-index:20;background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:4px 10px;font-size:10px;color:rgba(255,255,255,0.4);display:none;}
@@ -624,7 +658,13 @@ class Entity{
   addXP(v){
     this.xp+=v;
     const e=EVOLUTIONS[this.evoIdx];
-    if(this.evoIdx<3&&this.xp>=e.xpNext){this.evoIdx++;this.targetRadius=EVOLUTIONS[this.evoIdx].baseR+(this.radius-EVOLUTIONS[Math.max(0,this.evoIdx-1)].baseR)*0.4;return true;}
+    if(this.evoIdx<3&&this.xp>=e.xpNext){
+      const prevSize=this.radius;
+      this.evoIdx++;
+      // Mantener el tamaño exacto al evolucionar — solo cambia la forma, no el tamaño
+      this.targetRadius=Math.max(prevSize, EVOLUTIONS[this.evoIdx].baseR);
+      return true;
+    }
     return false;
   }
   grow(v){this.targetRadius=Math.min(this.targetRadius+v,130);}
@@ -2020,6 +2060,181 @@ function closeAd() {
 }
 
 
+
+// ═══════════════════════════════════════════
+// RANKING GLOBAL + RANGOS + RECOMPENSA DIARIA
+// ═══════════════════════════════════════════
+
+// ── Rangos por kills totales ──
+function getTier(kills) {
+  if (kills >= 500) return { name:'LEYENDA', cls:'tier-legend', emoji:'👑' };
+  if (kills >= 200) return { name:'DIAMANTE', cls:'tier-diamond', emoji:'💎' };
+  if (kills >= 80)  return { name:'ORO', cls:'tier-gold', emoji:'🥇' };
+  if (kills >= 30)  return { name:'PLATA', cls:'tier-silver', emoji:'🥈' };
+  return { name:'BRONCE', cls:'tier-bronze', emoji:'🥉' };
+}
+
+// ── Guardar stats al morir ──
+async function saveRankingStats(kills, score) {
+  if (!fbUser) return;
+  try {
+    const doc = await db.collection('players').doc(fbUser.uid).get();
+    const prev = doc.exists ? doc.data() : {};
+    const totalKills = (prev.totalKills || 0) + kills;
+    const totalScore = (prev.totalScore || 0) + score;
+    const bestScore  = Math.max(prev.bestScore || 0, score);
+    const tier = getTier(totalKills);
+    await db.collection('players').doc(fbUser.uid).update({
+      totalKills, totalScore, bestScore,
+      tier: tier.name,
+      username: fbUser.displayName || prev.username || 'Jugador',
+      coins,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // Mostrar tier actual en HUD
+    updateTierHUD(tier);
+  } catch(e) { console.error('saveRankingStats:', e); }
+}
+
+function updateTierHUD(tier) {
+  const hud = document.getElementById('hudUsername');
+  if (hud) {
+    const parent = hud.parentElement;
+    let tierEl = document.getElementById('hudTier');
+    if (!tierEl) {
+      tierEl = document.createElement('span');
+      tierEl.id = 'hudTier';
+      tierEl.style.cssText = 'font-size:10px;font-weight:900;padding:1px 6px;border-radius:20px;margin-left:4px;';
+      parent.appendChild(tierEl);
+    }
+    tierEl.textContent = tier.emoji + ' ' + tier.name;
+    tierEl.className = 'rank-tier ' + tier.cls;
+  }
+}
+
+// ── Abrir ranking ──
+let currentRankTab = 'kills';
+
+async function openRanking() {
+  document.getElementById('rankModal').classList.add('show');
+  loadRanking(currentRankTab);
+}
+
+function closeRanking() {
+  document.getElementById('rankModal').classList.remove('show');
+}
+
+function switchRankTab(tab, el) {
+  currentRankTab = tab;
+  document.querySelectorAll('.rank-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  loadRanking(tab);
+}
+
+async function loadRanking(tab) {
+  const listEl = document.getElementById('rankList');
+  listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">⏳ Cargando...</div>';
+  try {
+    const field = tab === 'kills' ? 'totalKills' : tab === 'score' ? 'bestScore' : 'coins';
+    const snap = await db.collection('players')
+      .orderBy(field, 'desc')
+      .limit(10)
+      .get();
+
+    if (snap.empty) {
+      listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Aún no hay jugadores en el ranking 👾</div>';
+      return;
+    }
+
+    const medals = ['🥇','🥈','🥉'];
+    const posCls = ['gold','silver','bronze'];
+    let html = '';
+    let myPos = -1;
+
+    snap.docs.forEach((doc, i) => {
+      const d = doc.data();
+      const isMe = fbUser && doc.id === fbUser.uid;
+      if (isMe) myPos = i + 1;
+      const tier = getTier(d.totalKills || 0);
+      const val = tab === 'kills' ? (d.totalKills || 0) + ' kills'
+                : tab === 'score' ? (d.bestScore || 0) + ' pts'
+                : '💰 ' + (d.coins || 0);
+      const evo = EVOLUTIONS[Math.min(3, Math.floor((d.totalKills||0)/50))];
+      html += `
+        <div class="rank-row ${isMe?'me':''}">
+          <div class="rank-pos ${posCls[i]||''}">${medals[i]||('#'+(i+1))}</div>
+          <div class="rank-avatar">${evo?.emoji||'🟢'}</div>
+          <div class="rank-info">
+            <div class="rank-name">${d.username||'Jugador'} <span class="rank-tier ${tier.cls}">${tier.emoji} ${tier.name}</span></div>
+            <div class="rank-val">${val}</div>
+          </div>
+          ${isMe?'<span style="font-size:10px;color:#00ff88;font-weight:900;">TÚ</span>':''}
+        </div>`;
+    });
+
+    listEl.innerHTML = html;
+
+    // Si el jugador no está en top 10, buscar su posición
+    if (fbUser && myPos === -1) {
+      document.getElementById('myRankRow').innerHTML = '<div style="text-align:center;font-size:12px;color:rgba(255,255,255,0.3);padding:8px;">Sigue jugando para entrar al top 10 💪</div>';
+    } else {
+      document.getElementById('myRankRow').innerHTML = '';
+    }
+  } catch(e) {
+    listEl.innerHTML = '<div style="text-align:center;color:rgba(255,100,100,0.6);padding:20px;">Error al cargar ranking</div>';
+  }
+}
+
+// ── Recompensa diaria ──
+async function checkDaily() {
+  if (!fbUser) return;
+  const today = new Date().toDateString();
+  const lastClaim = localStorage.getItem('evomon_daily_' + fbUser.uid);
+  const btn = document.getElementById('dailyBtn');
+  if (lastClaim !== today) {
+    btn.style.display = 'block';
+  }
+}
+
+async function claimDaily() {
+  if (!fbUser) return showToast('Inicia sesión para reclamar tu recompensa diaria');
+  const today = new Date().toDateString();
+  const lastClaim = localStorage.getItem('evomon_daily_' + fbUser.uid);
+  if (lastClaim === today) return showToast('⏳ Ya reclamaste tu recompensa hoy');
+  const reward = 50 + Math.floor(Math.random() * 50); // 50-100 monedas
+  coins += reward;
+  saveCoins();
+  updateCoinDisplays();
+  localStorage.setItem('evomon_daily_' + fbUser.uid, today);
+  document.getElementById('dailyBtn').style.display = 'none';
+  showToast('🎁 ¡Recompensa diaria! +' + reward + ' monedas 💰');
+}
+
+// ── Hook: guardar stats al morir ──
+const _origShowDeath = showDeathScreen;
+showDeathScreen = function(msg) {
+  // Guardar kills y score en Firebase ranking
+  if (typeof kills !== 'undefined' && typeof score !== 'undefined') {
+    saveRankingStats(kills, score);
+  }
+  _origShowDeath(msg);
+};
+
+// ── Mostrar botones cuando hay sesión ──
+const _origOnAuthSuccess = onAuthSuccess;
+onAuthSuccess = function(user) {
+  _origOnAuthSuccess(user);
+  document.getElementById('globalRankBtn').style.display = 'block';
+  document.getElementById('dailyBtn').style.display = 'none';
+  checkDaily();
+  // Cargar tier del usuario
+  db.collection('players').doc(user.uid || fbUser?.uid).get().then(doc => {
+    if (doc.exists && doc.data().totalKills) {
+      updateTierHUD(getTier(doc.data().totalKills));
+    }
+  }).catch(()=>{});
+};
+
 // ═══════════════════════════════════════════
 // FIREBASE AUTH + FIRESTORE
 // ═══════════════════════════════════════════
@@ -2432,6 +2647,28 @@ checkPaymentReturn();
 
 </script>
 
+
+
+<!-- RANKING GLOBAL -->
+<button id="globalRankBtn" onclick="openRanking()">🏆 RANKING</button>
+
+<div id="rankModal">
+  <div class="rank-box">
+    <div class="rank-title">🏆 RANKING GLOBAL</div>
+    <div class="rank-sub">Top jugadores de EvoMon</div>
+    <div class="rank-tabs">
+      <button class="rank-tab active" onclick="switchRankTab('kills',this)">💀 Kills</button>
+      <button class="rank-tab" onclick="switchRankTab('score',this)">⭐ Score</button>
+      <button class="rank-tab" onclick="switchRankTab('coins',this)">💰 Monedas</button>
+    </div>
+    <div id="rankList"><div style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Cargando...</div></div>
+    <div id="myRankRow"></div>
+    <button class="rank-close" onclick="closeRanking()">Cerrar</button>
+  </div>
+</div>
+
+<!-- RECOMPENSA DIARIA -->
+<button id="dailyBtn" onclick="claimDaily()">🎁 DAILY</button>
 
 <!-- AUTH MODAL -->
 <div id="authModal" class="show">
